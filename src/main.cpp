@@ -25,6 +25,7 @@
  *
  * @author Clément Foucher <clement.foucher@laas.fr>
  * @author Luiz Villa <luiz.villa@laas.fr>
+ * @author Ayoub Farah Hassan <ayoub.farah-hassan@laas.fr>
  */
 
 //--------------OWNTECH APIs----------------------------------
@@ -33,16 +34,28 @@
 #include "TwistAPI.h"
 #include "SpinAPI.h"
 
+//--------------Zephyr Drivers--------------------------------
+#include "zephyr/console/console.h"
+
+
 //--------------SETUP FUNCTIONS DECLARATION-------------------
 void setup_routine(); // Setups the hardware and software of the system
 
 //--------------LOOP FUNCTIONS DECLARATION--------------------
-void loop_background_task();   // Code to be executed in the background task
-void loop_critical_task();     // Code to be executed in real time in the critical task
+void loop_communication_task(); //code to be executed in the slow communication task
+void loop_application_task();   //code to be executed in the fast application task
+void loop_control_task();       //code to be executed in real-time at 20kHz
+
 
 //--------------USER VARIABLES DECLARATIONS-------------------
 
+enum serial_interface_menu_mode //LIST OF POSSIBLE MODES FOR THE OWNTECH CONVERTER
+{
+    IDLEMODE =0,
+};
 
+uint8_t received_serial_char;
+uint8_t mode = IDLEMODE;
 
 //--------------SETUP FUNCTIONS-------------------------------
 
@@ -54,26 +67,40 @@ void loop_critical_task();     // Code to be executed in real time in the critic
  */
 void setup_routine()
 {
+    console_init();
+
     // Setup the hardware first
     spin.version.setBoardVersion(TWIST_v_1_1_2);
 
     // Then declare tasks
-    uint32_t background_task_number = task.createBackground(loop_background_task);
+    uint32_t app_task_number = task.createBackground(loop_application_task);
+    uint32_t comm_task_number = task.createBackground(loop_communication_task);
     //task.createCritical(loop_critical_task, 500); // Uncomment if you use the critical task
 
     // Finally, start tasks
-    task.startBackground(background_task_number);
+    task.startBackground(app_task_number);
+    task.startBackground(comm_task_number);
     //task.startCritical(); // Uncomment if you use the critical task
 }
 
 //--------------LOOP FUNCTIONS--------------------------------
 
 /**
+ * This is the code for the communication task.
+ * it handles data exchanges with the outside world.
+ * It has the lowest priority
+*/
+void loop_communication_task()
+{
+        //communication task code goes here
+}
+
+/**
  * This is the code loop of the background task
  * It is executed second as defined by it suspend task in its last line.
  * You can use it to execute slow code such as state-machines.
  */
-void loop_background_task()
+void loop_application_task()
 {
     // Task content
     printk("Hello World! \n");
