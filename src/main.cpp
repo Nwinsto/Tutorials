@@ -44,7 +44,7 @@ void setup_routine(); // Setups the hardware and software of the system
 //--------------LOOP FUNCTIONS DECLARATION--------------------
 void loop_communication_task(); //code to be executed in the slow communication task
 void loop_application_task();   //code to be executed in the fast application task
-void loop_control_task();       //code to be executed in real-time at 20kHz
+void loop_critical_task();       //code to be executed in real-time at 20kHz
 
 
 //--------------USER VARIABLES DECLARATIONS-------------------
