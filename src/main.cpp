@@ -52,13 +52,17 @@ void loop_critical_task();       //code to be executed in real-time at 20kHz
 enum serial_interface_menu_mode //LIST OF POSSIBLE MODES FOR THE OWNTECH CONVERTER
 {
     IDLEMODE =0,
-    SERIALMODE
-    
+    SERIALMODE,
+    POWERMODE
 };
 
 uint8_t received_serial_char;
 uint8_t mode = IDLEMODE;
 static uint32_t counter = 0; //counter variable
+static float32_t duty_cycle = 0.5; //[-] duty cycle (comm task)
+static float32_t duty_cycle_step = 0.05; //[-] duty cycle step (comm task)
+static bool pwm_enable = false; //[bool] state of the PWM (ctrl task)
+static uint32_t control_task_period = 50; //[us] period of the control task
 
 //--------------SETUP FUNCTIONS-------------------------------
 
@@ -68,24 +72,26 @@ static uint32_t counter = 0; //counter variable
  * In this example, we setup the version of the spin board and a background task.
  * The critical task is defined but not started.
  */
-void setup_routine()
-{
+void setup_routine(){
     console_init();
 
     // Setup the hardware first
-    spin.version.setBoardVersion(TWIST_v_1_1_2);
+    spin.version.setBoardVersion(SPIN_v_1_0);
+    // Buck mode initialization
+    twist.setVersion(shield_TWIST_V1_3);
+    twist.initAllBuck();
 
     // Then declare tasks
     uint32_t app_task_number = task.createBackground(loop_application_task);
     uint32_t comm_task_number = task.createBackground(loop_communication_task);
-    //task.createCritical(loop_critical_task, 500); // Uncomment if you use the critical task
+    task.createCritical(loop_critical_task, 500); // Uncomment if you use the critical task
 
     // Finally, start tasks
     task.startBackground(app_task_number);
     task.startBackground(comm_task_number);
-    //task.startCritical(); // Uncomment if you use the critical task
-}
+    task.startCritical(); // Uncomment if you use the critical task
 
+}
 //--------------LOOP FUNCTIONS--------------------------------
 
 /**
@@ -99,14 +105,16 @@ void loop_communication_task()
     switch (received_serial_char) {
         case 'h':
             //----------SERIAL INTERFACE MENU-----------------------
-            printk(" _____________________________________\n");
-            printk("|     ------- MENU ---------          |\n");
-            printk("|     press i : idle mode             |\n");
-            printk("|     press s : serial mode           |\n");
-            printk("|     press u : counter UP            |\n");
-            printk("|     press d : counter DOWN          |\n");
-            printk("|_____________________________________|\n\n");
+	        printk(" ________________________________________\n");
+            printk("|     ------- MENU ---------             |\n");
+            printk("|     press i : idle mode                |\n");
+            printk("|     press s : serial mode              |\n");
+            printk("|     press p : power mode               |\n");
+            printk("|     press u : duty cycle UP            |\n");
+            printk("|     press d : duty cycle DOWN          |\n");
+            printk("|________________________________________|\n\n");
             //------------------------------------------------------
+
             break;
         case 'i':
             printk("idle mode\n");
@@ -116,16 +124,23 @@ void loop_communication_task()
             printk("serial mode\n");
             mode = SERIALMODE;
             break;
+        case 'p':
+            printk("power mode\n");
+            mode = POWERMODE;
+            break;
         case 'u':
-            counter++;
+            printk("duty cycle UP: %f\n", duty_cycle);
+            duty_cycle = duty_cycle + duty_cycle_step;
+            if(duty_cycle>1.0) duty_cycle = 1.0;
             break;
         case 'd':
-            counter--;
+            printk("duty cycle DOWN: %f\n", duty_cycle);
+            duty_cycle = duty_cycle - duty_cycle_step;
+            if(duty_cycle<0.0) duty_cycle = 0.0;
             break;
         default:
             break;
     }
-
 }
 
 /**
@@ -138,11 +153,10 @@ void loop_application_task()
     if(mode==IDLEMODE) {
         spin.led.turnOff();
 
-    }else if(mode==SERIALMODE) {
+    }else if(mode==SERIALMODE || mode==POWERMODE) {
         spin.led.turnOn();
-        printk("%d\n", counter);
-    }
-    
+        printk("%f \n", duty_cycle);
+    }        
     task.suspendBackgroundMs(100); 
 }
 /**
@@ -153,7 +167,21 @@ void loop_application_task()
  */
 void loop_critical_task()
 {
+    if(mode==IDLEMODE || mode==SERIALMODE) 
+    {
+        pwm_enable = false;
+        twist.stopAll();
+    }
+    else if(mode==POWERMODE) 
+    {
+        if(!pwm_enable) {
+            pwm_enable = true;
+            twist.startAll();
+        }
 
+        //Sends the PWM to the switches
+        twist.setAllDutyCycle(duty_cycle);
+    }
 }
 
 /**
