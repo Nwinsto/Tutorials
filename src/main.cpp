@@ -52,10 +52,13 @@ void loop_critical_task();       //code to be executed in real-time at 20kHz
 enum serial_interface_menu_mode //LIST OF POSSIBLE MODES FOR THE OWNTECH CONVERTER
 {
     IDLEMODE =0,
+    SERIALMODE
+    
 };
 
 uint8_t received_serial_char;
 uint8_t mode = IDLEMODE;
+static uint32_t counter = 0; //counter variable
 
 //--------------SETUP FUNCTIONS-------------------------------
 
@@ -92,7 +95,37 @@ void setup_routine()
 */
 void loop_communication_task()
 {
-        //communication task code goes here
+    received_serial_char = console_getchar();
+    switch (received_serial_char) {
+        case 'h':
+            //----------SERIAL INTERFACE MENU-----------------------
+            printk(" _____________________________________\n");
+            printk("|     ------- MENU ---------          |\n");
+            printk("|     press i : idle mode             |\n");
+            printk("|     press s : serial mode           |\n");
+            printk("|     press u : counter UP            |\n");
+            printk("|     press d : counter DOWN          |\n");
+            printk("|_____________________________________|\n\n");
+            //------------------------------------------------------
+            break;
+        case 'i':
+            printk("idle mode\n");
+            mode = IDLEMODE;
+            break;
+        case 's':
+            printk("serial mode\n");
+            mode = SERIALMODE;
+            break;
+        case 'u':
+            counter++;
+            break;
+        case 'd':
+            counter--;
+            break;
+        default:
+            break;
+    }
+
 }
 
 /**
@@ -102,14 +135,16 @@ void loop_communication_task()
  */
 void loop_application_task()
 {
-    // Task content
-    printk("Hello World! \n");
-    spin.led.toggle();
+    if(mode==IDLEMODE) {
+        spin.led.turnOff();
 
-    // Pause between two runs of the task
-    task.suspendBackgroundMs(1000);
+    }else if(mode==SERIALMODE) {
+        spin.led.turnOn();
+        printk("%d\n", counter);
+    }
+    
+    task.suspendBackgroundMs(100); 
 }
-
 /**
  * This is the code loop of the critical task
  * It is executed every 500 micro-seconds defined in the setup_software function.
