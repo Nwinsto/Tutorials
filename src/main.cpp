@@ -8,7 +8,6 @@
 //------------ZEPHYR DRIVERS----------------------
 #include "zephyr/console/console.h"
 
-
 //--------------SETUP FUNCTIONS DECLARATION-------------------
 void setup_routine(); // Setups the hardware and software of the system
 
@@ -30,23 +29,29 @@ uint8_t mode = IDLEMODE;
 
 //--------------USER VARIABLES DECLARATIONS----------------------
 
-static float32_t duty_cycle = 0.5; //[-] duty cycle (comm task)
+static float32_t duty_cycle_1 = 0.5;
+static float32_t duty_cycle_2 = 0.5; //[-] duty cycle (comm task)
 static float32_t duty_cycle_step = 0.05; //[-] duty cycle step (comm task)
-static bool pwm_enable = false; //[bool] state of the PWM (ctrl task)
+static bool pwm_enable_1 = false; //[bool] state of the PWM (ctrl task)
+static bool pwm_enable_2 = false; //[bool] state of the PWM (ctrl task)
 static uint32_t control_task_period = 50; //[us] period of the control task
 
 //Measurement data
 static float32_t V1_low_value; //store value of V1_low (app task)
 static float32_t V2_low_value; //store value of V2_low (app task)
 static float32_t V_high_value; //store value of Vhigh (app task)
-
+static float32_t seuil_V = 5;     //Seuil du leg
+static float32_t seuil_V_max = 15;  
 static float32_t I1_low_value; //store value of i1_low (app task)
 static float32_t I2_low_value; //store value of i2_low (app task)
 static float32_t I_high_value; //store value of ihigh (app task)
+static float32_t seuil_I1 = 0.2;     //Seuil du leg
 
 static float32_t meas_data; //temp storage meas value (ctrl task)
 //
-static float32_t voltage_reference = 10; //voltage reference (app task)
+static float32_t voltage_reference = 20; //voltage reference (app task)
+static float32_t current_reference_1 = 0.8;
+static float32_t current_reference_2 = 0.8;
 static int cpt_step = 0; //counter for voltage reference (app task)
 
 static float32_t kp = 0.000215;
@@ -129,14 +134,14 @@ void loop_communication_task()
             mode = POWERMODE;
             break;
         case 'u':
-            printk("duty cycle UP: %f\n", duty_cycle);
-            duty_cycle = duty_cycle + duty_cycle_step;
-            if(duty_cycle>1.0) duty_cycle = 1.0;
+            printk("duty cycle UP: %f\n", duty_cycle_1);
+            duty_cycle_1 = duty_cycle_1 + duty_cycle_step;
+            if(duty_cycle_1>1.0) duty_cycle_1 = 1.0;
             break;
         case 'd':
-            printk("duty cycle DOWN: %f\n", duty_cycle);
-            duty_cycle = duty_cycle - duty_cycle_step;
-            if(duty_cycle<0.0) duty_cycle = 0.0;
+            printk("duty cycle DOWN: %f\n", duty_cycle_1);
+            duty_cycle_1 = duty_cycle_1 - duty_cycle_step;
+            if(duty_cycle_1<0.0) duty_cycle_1 = 0.0;
             break;
         case 'b':
             printk("closed-loop buck mode\n");
@@ -158,15 +163,10 @@ void loop_application_task()
         spin.led.toggle();
     }else if(mode==BUCKMODE) {
         spin.led.turnOn();
-        if(cpt_step==10) voltage_reference = 15;
-        if(cpt_step==20) {
-            voltage_reference = 10;
-            cpt_step=0;
-        }
-        cpt_step ++;
+        
     }
        
-    printk("%f:", duty_cycle);
+    printk("%f:", duty_cycle_1);
     printk("%f:", V_high_value);
     printk("%f:", V1_low_value);
     printk("%f:", V2_low_value);
@@ -174,7 +174,7 @@ void loop_application_task()
     printk("%f:", I1_low_value);
     printk("%f\n", I2_low_value);
 
-    task.suspendBackgroundMs(100); 
+    task.suspendBackgroundMs(50); 
 }
 
 
@@ -205,20 +205,33 @@ void loop_control_task()
         I_high_value = meas_data;
 
     if(mode==IDLEMODE || mode==SERIALMODE) {
-         pwm_enable = false;
+         pwm_enable_1 = false;
          twist.stopAll();
 
     }else if(mode==POWERMODE || mode==BUCKMODE) {
 
-        if(!pwm_enable) {
-            pwm_enable = true;
-            twist.startAll();
+        if(!pwm_enable_1) {
+            pwm_enable_1 = true;
+            twist.startLeg(LEG1);
         }
+   
+    if((V1_low_value < seuil_V)&& !pwm_enable_2){
+        pwm_enable_2 = true;
+        twist.startLeg(LEG2);
+    }
+    else if ((V1_low_value >= seuil_V_max)&& pwm_enable_2){
+        pwm_enable_2 = false;
+        twist.stopLeg(LEG2);
+    }
+    
     if(mode==BUCKMODE){
-        duty_cycle = opalib_control_leg1_pid_calculation(voltage_reference, V1_low_value);
+        duty_cycle_1 = opalib_control_leg1_pid_calculation(current_reference_1, I1_low_value);
+        duty_cycle_2 = opalib_control_leg2_pid_calculation(current_reference_2, I2_low_value);
+
     }
     //Sends the PWM to the switches
-    twist.setAllDutyCycle(duty_cycle);
+    twist.setLegDutyCycle(LEG1, duty_cycle_1);
+    twist.setLegDutyCycle(LEG2, duty_cycle_2);
     }
 }
 
